@@ -2,62 +2,53 @@ import torch
 import torch.nn as nn
 from typing import Dict
 
+class TokenEmbedding(layers.Layer):
+    def __init__(self, vocab_size, embed_dim, std=0.02, **kwargs):
+        super().__init__(**kwargs)
+        self.vocab_size = vocab_size
+        self.embed_dim = embed_dim
+        self.std = std
 
-class PositionalEmbedding(nn.Embedding):
-    """
-    Tensor          Type            Shape
-    ===========================================================================
-    input           long            (..., seq_len)
-    ---------------------------------------------------------------------------
-    output          float           (..., seq_len, embedding_dim)
-    ===========================================================================
-    """
-    def reset_parameters(self):
-        nn.init.normal_(self.weight, std=0.02)
+    def build(self, input_shape):
+        self.weight = self.add_weight(
+            name="weight",
+            shape=[self.vocab_size, self.embed_dim],
+            initializer=tf.random_normal_initializer(stddev=self.std),
+            trainable=True
+        )
 
-    def _load_from_state_dict(self,
-                              state_dict: Dict[str, torch.Tensor],
-                              prefix: str,
-                              *args,
-                              **kwargs):
-        weight = state_dict[f'{prefix}weight']
-
-        # Reduce or expand the positional embedding matrix to increase or
-        # decrease the total sequence length.
-        if weight.size(0) < self.num_embeddings:
-            weight = torch.cat((weight, self.weight[weight.size(0):]), dim=0)
-        elif weight.size(0) > self.num_embeddings:
-            weight = weight[:self.num_embeddings]
-
-        state_dict[f'{prefix}weight'] = weight
-        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
-
-    def forward(self, x: torch.Tensor, offset: int = 0) -> torch.Tensor:
-        position = torch.arange(offset, offset + x.size(-1),
-                                dtype=torch.long, device=x.device)
-        position = position.view((1,) * (x.ndim - 1) + (-1,)).expand_as(x)
-
-        return super().forward(position)
-
-
-class TokenEmbedding(nn.Embedding):
-    """
-    Tensor          Type            Shape
-    ===========================================================================
-    input           long or float  (..., seq_len)
-                                    or (..., seq_len, embedding_dim)
-    ---------------------------------------------------------------------------
-    output          float           (..., seq_len, embedding_dim)
-                                    or (..., seq_len, num_embeddings)
-    ===========================================================================
-    """
-    def reset_parameters(self):
-        nn.init.normal_(self.weight, std=0.02)
-
-    def forward(self,
-                x: torch.Tensor,
-                transposed: bool = False) -> torch.Tensor:
+    def call(self, x, transposed=False):
         if transposed:
-            return torch.matmul(x, self.weight.transpose(0, 1))
+            # for final-logits projection: [..., embd] → [..., vocab]
+            x_flat = tf.reshape(x, [-1, self.embed_dim])
+            return tf.matmul(x_flat, self.weight, transpose_b=True)
         else:
-            return super().forward(x)
+            # standard token lookup: [..., seq] → [..., seq, embd]
+            return tf.nn.embedding_lookup(self.weight, tf.cast(x, tf.int32))
+
+
+class PositionalEmbedding(layers.Layer):
+    def __init__(self, max_len, embed_dim, std=0.01, **kwargs):
+        super().__init__(**kwargs)
+        self.max_len = max_len
+        self.embed_dim = embed_dim
+        self.std = std
+
+    def build(self, input_shape):
+        self.weight = self.add_weight(
+            name="weight",
+            shape=[self.max_len, self.embed_dim],
+            initializer=tf.random_normal_initializer(stddev=self.std),
+            trainable=True
+        )
+
+    def call(self, x, offset=0):
+        """
+        x: tensor of shape (..., seq_len)  (only for shape)
+        offset: how many positions to skip for past cache
+        """
+        seq_len = tf.shape(x)[-1]
+        pos = tf.range(offset, offset + seq_len, dtype=tf.int32)
+        pos = tf.reshape(pos, (1,) * (x.shape.ndims - 1) + (seq_len,))
+        pos = tf.tile(pos, tf.shape(x) // tf.shape(pos))
+        return tf.nn.embedding_lookup(self.weight, pos)
