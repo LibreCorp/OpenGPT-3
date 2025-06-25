@@ -6,8 +6,8 @@ from torch import Tensor
 
 def shape_list(x: Tensor):
     return list(x.shape) if isinstance(x.shape, torch.Size) else list(x.size())
-
-def stable_softmax(x: Tensor, axis: int = -1) -> Tensor:
+    
+def softmax(x: Tensor, axis: int = -1) -> Tensor:
     x = x - x.max(dim=axis, keepdim=True).values
     ex = x.exp()
     return ex / ex.sum(dim=axis, keepdim=True)
