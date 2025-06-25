@@ -43,13 +43,14 @@ class MultiHeadAttn(nn.Module):
         return context, present
 
 class AttentionLayer(nn.Module):
-    def __init__(self, n_head: int, dims: int, dropout: float):
-        super().__init__()
+    def __init__(self, n_head: int, dims: int, dropout: float, local_window: int, **kwargs):
+        super().__init__(**kwargs)
         self.proj_q = nn.Linear(dims, dims)
         self.proj_k = nn.Linear(dims, dims)
         self.proj_v = nn.Linear(dims, dims)
-        self.attn = MultiHeadAttn(n_head, local_window=64, attn_pdrop=dropout)
-        self.out = nn.Linear(dims, dims)
+        # exact local_window from hparams
+        self.attn = MultiHeadAttn(n_head, local_window, attn_pdrop=dropout)
+        self.out  = nn.Linear(dims, dims)
 
     def forward(self,
                 x: Tensor, past: Optional[Past],
