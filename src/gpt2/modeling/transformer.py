@@ -43,15 +43,31 @@ class TransformerBlock(nn.Module):
         return x, present
 
     @staticmethod
-    def past_shape(hparams, batch, seq):
+    def past_shape(hparams, batch_size=None, sequence=None):
         return [
-            batch,
+            batch_size,
             hparams['n_layer'],
             2,
             hparams['n_head'],
-            seq,
+            sequence,
             hparams['n_embd'] // hparams['n_head']
         ]
+
+    @staticmethod
+    def expand_tile(value, size):
+        t = torch.as_tensor(value)
+        ndims = t.dim()
+        # unsqueeze at dim 0 and repeat
+        return t.unsqueeze(0).repeat(size, *([1] * ndims))
+
+    @staticmethod
+    def positions_for(tokens, past_length):
+        # tokens: Tensor of shape (batch, steps)
+        batch_size = tokens.size(0)
+        nsteps = tokens.size(1)
+        # create position indices starting from past_length
+        seq = torch.arange(past_length, past_length + nsteps, device=tokens.device)
+        return TransformerBlock.expand_tile(seq, batch_size)
 
 class GPTModel(nn.Module):
     def __init__(self, hparams: dict):
@@ -73,6 +89,7 @@ class GPTModel(nn.Module):
         if past is None:
             pos = torch.arange(seq, device=device).unsqueeze(0).expand(b, -1)
         else:
+            # recover cached length
             plen = past[0][0].size(2)
             pos  = torch.arange(plen, plen + seq, device=device).unsqueeze(0).expand(b, -1)
 
