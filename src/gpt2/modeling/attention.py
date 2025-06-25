@@ -1,116 +1,83 @@
-import math
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import math
 from typing import Optional, Tuple
 
 Past = Tuple[torch.Tensor, torch.Tensor]
 
-
-class BaseAttention(nn.Module):
-    """
-    Tensor          Type            Shape
-    ===========================================================================
-    q               float           (..., query_len, dims)
-    k               float           (..., kv_len, dims)
-    v               float           (..., kv_len, dims)
-    mask            bool            (..., query_len, kv_len)
-    ---------------------------------------------------------------------------
-    output          float           (..., query_len, dims)
-    ===========================================================================
-    """
-    def __init__(self, dropout: float = 0.1):
-        super().__init__()
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self,
-                q: torch.Tensor,
-                k: torch.Tensor,
-                v: torch.Tensor,
-                mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        x = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(k.size(-1))
-
-        if mask is not None:
-            x += mask.type_as(x) * x.new_tensor(-1e4)
-        x = self.dropout(x.softmax(-1))
-
-        return torch.matmul(x, v)
-
-
-class MultiHeadAttention(BaseAttention):
-    """
-    Tensor          Type            Shape
-    ===========================================================================
-    q               float           (..., query_len, dims)
-    k               float           (..., kv_len, dims)
-    v               float           (..., kv_len, dims)
-    mask            bool            (..., query_len, kv_len)
-    ---------------------------------------------------------------------------
-    output          float           (..., query_len, dims)
-    ===========================================================================
-    """
-    def __init__(self, heads: int, dropout: float = 0.1):
-        super().__init__(dropout)
-        self.heads = heads
-
-    def forward(self,
-                q: torch.Tensor,
-                k: torch.Tensor,
-                v: torch.Tensor,
-                mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        # Split the tensors to multi-heads.
-        q = q.view(q.size()[:-1] + (self.heads, q.size(-1) // self.heads))
-        k = k.view(k.size()[:-1] + (self.heads, k.size(-1) // self.heads))
-        v = v.view(v.size()[:-1] + (self.heads, v.size(-1) // self.heads))
-
-        q = q.transpose(-3, -2)
-        k = k.transpose(-3, -2)
-        v = v.transpose(-3, -2)
-
-        if mask is not None:
-            mask = mask.unsqueeze(-3)
-
-        # Calculate multi-headed attentions and merge them into one.
-        return (super().forward(q, k, v, mask)
-                .transpose(-3, -2)
-                .contiguous()
-                .view(q.size()[:-3] + (q.size(-2), v.size(-1) * self.heads)))
-
-
 class AttentionLayer(nn.Module):
     """
-    Tensor          Type            Shape
-    ===========================================================================
-    q               float           (..., query_len, dims)
-    k               float           (..., kv_len, dims)
-    v               float           (..., kv_len, dims)
-    past (*)        float           (..., past_len, dims)
-    mask            bool            (..., query_len, past_len + kv_len)
-    ---------------------------------------------------------------------------
-    output 1        float           (..., query_len, dims)
-    output 2 (*)    float           (..., past_len + kv_len, dims)
-    ===========================================================================
+    Args:
+      heads:         number of attention heads
+      dims:          model dimensionality
+      local_window:  window size for local attention on odd layers
+      layer_idx:     layer index (0-based): even→causal, odd→local
+      dropout:       attention-score dropout
+
+    Inputs:
+      q:    (..., query_len, dims)
+      k:    (..., kv_len,    dims)
+      v:    (..., kv_len,    dims)
+      past: optional tuple of (k, v) with shapes (..., past_len, dims)
+
+    Outputs:
+      out:    (..., query_len, dims)
+      present:(k_cat, v_cat)
     """
-    def __init__(self, heads: int, dims: int, dropout: float = 0.1):
+    def __init__(self, heads: int, dims: int, local_window: int, layer_idx: int, dropout: float = 0.1):
         super().__init__()
+        self.heads = heads
+        self.dims = dims
+        self.local_window = local_window
+        self.layer_idx = layer_idx
+
         self.attn = MultiHeadAttention(heads, dropout)
         self.proj_q = nn.Linear(dims, dims)
         self.proj_k = nn.Linear(dims, dims)
         self.proj_v = nn.Linear(dims, dims)
-        self.linear = nn.Linear(dims, dims)
+        self.out_proj = nn.Linear(dims, dims)
 
     def forward(self,
                 q: torch.Tensor,
                 k: torch.Tensor,
                 v: torch.Tensor,
-                past: Optional[Past] = None,
-                mask: Optional[torch.Tensor] = None
+                past: Optional[Past] = None
                 ) -> Tuple[torch.Tensor, Past]:
-        q, k, v = self.proj_q(q), self.proj_k(k), self.proj_v(v)
+        # project
+        q = self.proj_q(q)
+        k = self.proj_k(k)
+        v = self.proj_v(v)
 
-        # Reuse attention keys and values by concatenating to the current ones.
+        # append past keys/values if present
         if past is not None:
-            k = torch.cat((past[0], k), dim=-2)
-            v = torch.cat((past[1], v), dim=-2)
+            pk, pv = past
+            k = torch.cat([pk, k], dim=-2)
+            v = torch.cat([pv, v], dim=-2)
 
-        x = self.linear(self.attn(q, k, v, mask))
-        return x, (k, v)
+        # build mask: True = mask out
+        seq_k = k.size(-2)
+        seq_q = q.size(-2)
+        past_len = seq_k - seq_q
+        device = q.device
+
+        if (self.layer_idx % 2) == 0:
+            # causal: disallow j > i_global
+            # build global causal once, then slice
+            global_mask = ~torch.tril(torch.ones(seq_k, seq_k, dtype=torch.bool, device=device))
+        else:
+            # local window: disallow positions j where i_global - j not in [0, window]
+            idxs = torch.arange(seq_k, device=device)
+            diff = idxs.unsqueeze(1) - idxs.unsqueeze(0)  # i_global - j_global
+            allowed = (diff >= 0) & (diff <= self.local_window)
+            global_mask = ~allowed
+
+        # slice only rows for the current queries
+        mask = global_mask[past_len:, :]               # shape (seq_q, seq_k)
+        mask = mask.unsqueeze(0)                       # shape (1, seq_q, seq_k)
+        # `MultiHeadAttention` will unsqueeze for heads and broadcast to batch
+
+        # compute attention
+        attn_out = self.attn(q, k, v, mask)            # (..., seq_q, dims)
+        out = self.out_proj(attn_out)
+        return out, (k, v)
