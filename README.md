@@ -22,6 +22,8 @@ OpenGPT-3 is a PyTorch-based replication of the GPT-3 architecture, designed to 
 * **Evaluation** on held-out corpora (perplexity, etc.)
 * **Interactive visualization** of training metrics
 
+More detailed documentation is available [on DeepWiki](https://deepwiki.com/LibreCorp/OpenGPT-3).
+
 ---
 
 ## Features
