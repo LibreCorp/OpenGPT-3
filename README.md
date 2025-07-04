@@ -7,6 +7,9 @@
 2. Tanh-GELU Approximation
 3. Pre-Normalization
 4. Alternating dense and locally banded sparse attention patterns in the layers of the transformer
+5. Multi-Head Attention as GPT-2
+
+**Beyond "GPT-3-Style", True Replication Attempt**
 
 ## (Every Other Detail not Mentioned in the GPT-3 Paper is Inherited from GPT-2)
 
