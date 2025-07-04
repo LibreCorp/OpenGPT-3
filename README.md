@@ -1,6 +1,17 @@
 > **Language Models are Few-Shot Learners**
 > Brown, T. et al. (2020). *Language Models are Few-Shot Learners*. [arXiv:2005.14165](https://arxiv.org/abs/2005.14165)
 
+## GPT-3 Details
+
+Modified Initialization Inherited from GPT-2
+Tanh-GELU Approximation
+Pre-Normalization
+Alternating dense and locally banded sparse attention patterns in the layers of the transformer
+
+## (Every Other Detail not Mentioned in the GPT-3 Paper is Inherited from GPT-2)
+
+## Proof: ""We use the same model and architecture as GPT-2"" - GPT-3 Paper (This suggests everything else is borrowed from GPT-2)
+
 ## Table of Contents
 
 * [Introduction](#introduction)
