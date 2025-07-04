@@ -3,3 +3,8 @@ tqdm
 torch
 numpy
 matplotlib
+tokenizers>=0.13.0
+transformers>=4.30.0
+datasets>=2.0.0
+safetensors>=0.3.0
+pytest>=6.0
