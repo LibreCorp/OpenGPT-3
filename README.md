@@ -13,7 +13,8 @@
 
 ## (Every Other Detail not Mentioned in the GPT-3 Paper is Inherited from GPT-2)
 
-## Proof: ""We use the same model and architecture as GPT-2"" - GPT-3 Paper (This suggests everything else is borrowed from GPT-2)
+## Proof: ""We use the same model and architecture as GPT-2"" - GPT-3 Paper 
+**(This suggests everything else is borrowed from GPT-2)**
 
 ## Table of Contents
 
