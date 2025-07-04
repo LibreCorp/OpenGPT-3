@@ -3,10 +3,10 @@
 
 ## GPT-3 Details
 
-Modified Initialization Inherited from GPT-2
-Tanh-GELU Approximation
-Pre-Normalization
-Alternating dense and locally banded sparse attention patterns in the layers of the transformer
+1. Modified Initialization Inherited from GPT-2
+2. Tanh-GELU Approximation
+3. Pre-Normalization
+4. Alternating dense and locally banded sparse attention patterns in the layers of the transformer
 
 ## (Every Other Detail not Mentioned in the GPT-3 Paper is Inherited from GPT-2)
 
