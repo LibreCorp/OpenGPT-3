@@ -35,13 +35,7 @@ class Evaluator(object):
                     if k not in total_metrics:
                         total_metrics[k] = []
                     total_metrics[k].append(v)
-            break # Only iterate once through the dataset
-
-            # Record the batched metrics.
-            for k, v in batch_metrics.items():
-                if k not in total_metrics:
-                    total_metrics[k] = []
-                total_metrics[k].append(v)
+            break  # Only iterate once through the dataset
 
         return {k: sum(v) / len(v) for k, v in total_metrics.items()}
 
