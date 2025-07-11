@@ -5,9 +5,9 @@ import torch.nn as nn
 import torch.optim as optim
 from datasets import load_dataset
 from transformers import PreTrainedTokenizerFast
-from opengpt3.utils import fusing
-from opengpt3.modeling import Transformer
-from opengpt3.training import TrainConfig, TrainingSpec, Trainer
+from .utils import fusing
+from .modeling import Transformer
+from .training import TrainConfig, TrainingSpec, Trainer
 from typing import Tuple, Iterator, Dict
 
 
