@@ -5,9 +5,13 @@ import torch.nn as nn
 import torch.optim as optim
 from datasets import load_dataset
 from transformers import PreTrainedTokenizerFast
-from .utils import fusing
-from .modeling import Transformer
-from .training import TrainConfig, TrainingSpec, Trainer
+import sys
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
+
+from utils import fusing
+from modeling import Transformer
+from training import TrainConfig, TrainingSpec, Trainer
 from typing import Tuple, Iterator, Dict
 
 
