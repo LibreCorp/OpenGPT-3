@@ -1,0 +1,17 @@
+For making InstructGPT (minus all the so called "ethical alignment") 
+(RHLF, PPO, etc only for truthfulness alignment and reliability)
+
+(No-Robots) - https://huggingface.co/datasets/HuggingFaceH4/no_robots
+
+(Datasets to Create 175B - Some Borrowed from OPT)
+
+Bookcorpus - https://huggingface.co/datasets/bookcorpus/bookcorpus
+The Pile - https://huggingface.co/datasets/EleutherAI/the_pile_deduplicated
+Books3 - https://huggingface.co/datasets/Geralt-Targaryen/books3/
+CC-News - https://huggingface.co/datasets/vblagoje/cc_news
+OpenWebText - https://huggingface.co/datasets/sytelus/openwebtext/
+Wikipedia - https://huggingface.co/datasets/legacy-datasets/wikipedia
+cc-stories - https://huggingface.co/datasets/spacemanidol/cc-stories
+pushshift-reddit (Submissions: https://huggingface.co/datasets/fddemarco/pushshift-reddit)
+                 (Comments: https://huggingface.co/datasets/fddemarco/pushshift-reddit-comments)
+openwebtext2 - https://huggingface.co/datasets/Geralt-Targaryen/openwebtext2
