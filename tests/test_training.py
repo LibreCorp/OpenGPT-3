@@ -78,7 +78,7 @@ def test_full_training_pipeline_hello_world(tmp_path):
     config = TrainConfig(
         batch_train=2, batch_eval=2,
         total_steps=2, eval_steps=100, save_steps=100,
-        log_steps=10,
+        log_steps=1,
         save_model_path=str(out_dir) + os.sep,
         save_checkpoint_path=str(tmp_path / "checkpoint.pth"),
         description="hello-world pipeline", log_format="",

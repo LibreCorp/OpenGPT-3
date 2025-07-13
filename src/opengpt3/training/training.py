@@ -178,6 +178,9 @@ class Trainer(object):
                 # safetensors here
                 model.cpu().save_pretrained(out_dir)
                 self.spec.tokenizer.save_pretrained(out_dir)
+                # save metrics
+                with open(os.path.join(out_dir, 'metrics.json'), 'w') as f:
+                    json.dump(recorder.metrics, f)
             else:
                 # Legacy single-file save
                 # just in case
