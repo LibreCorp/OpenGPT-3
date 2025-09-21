@@ -61,3 +61,23 @@ class AttentionLayer(nn.Module):
         a_out, present = self.attn(q, k, v, past, layer_idx, training)
         a_out = merge_heads(a_out)
         return a_out, present
+
+    def _build_mask(self, q_len: int, k_len: int, layer_idx: int, device, dtype):
+        """
+        GPT-3 uses alternating dense and sparse attention following Sparse Transformer (Child et al., 2019).
+        We implement "sparse" as the union of a local banded mask and an optional strided mask.
+        - Even layers: dense causal mask
+        - Odd layers: sparse (local [+ strided if stride>0]) causal mask
+        """
+        if self.pattern == "dense":
+            return causal_mask(q_len, k_len, device, dtype)
+        # alternating by layer index
+        dense_layer = (layer_idx % 2 == 0)
+        if dense_layer:
+            return causal_mask(q_len, k_len, device, dtype)
+        # sparse layer
+        m_local = local_mask(q_len, k_len, max(self.local_window, 0), device, dtype) if self.local_window > 0 else None
+        m_stride = strided_mask(q_len, k_len, self.stride, device, dtype) if self.stride and self.stride > 1 else None
+        m = combine_masks(m_local, m_stride)
+        # fallback to causal if nothing set
+        return m if m is not None else causal_mask(q_len, k_len, device, dtype)
