@@ -31,3 +31,28 @@ def local_mask(q_len: int, k_len: int, window: int, device, dtype):
     diff = idx_k[None,:] - idx_q[:,None]
     m = (diff>=0) & (diff<=window)
     return m.to(dtype).unsqueeze(0).unsqueeze(0)
+
+def strided_mask(q_len: int, k_len: int, stride: int, device, dtype):
+    """
+    Sparse Transformer (Child et al., 2019)-style strided attention.
+    Each query i can attend to keys j < i where (i - j) % stride == 0.
+    """
+    q = torch.arange(q_len, device=device)[:, None]
+    k = torch.arange(k_len, device=device)[None, :]
+    # Only allow looking backward (causal) and matching the stride
+    backward = (k <= q).to(torch.bool)
+    hits = ((q - k) % stride == 0)
+    m = (backward & hits).to(dtype)
+    return m.unsqueeze(0).unsqueeze(0)
+
+def combine_masks(*masks):
+    """
+    Combine a list of [B=1, H=1, Q, K] masks with logical OR in float space.
+    A position is attendable if any mask allows it.
+    """
+    out = None
+    for m in masks:
+        if m is None:
+            continue
+        out = m if out is None else torch.clamp(out + m, 0, 1)
+    return out
