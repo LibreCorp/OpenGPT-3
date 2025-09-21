@@ -25,12 +25,14 @@ class TransformerBlock(nn.Module):
         self.c_attn.weight.data.mul_(scale)
         self.c_attn.bias.data.mul_(scale)
 
-        # propagate local_window from hparams
+        # Attention per GPT-3: alternate dense and sparse (local+optional strided).
         self.attn = AttentionLayer(
-            hparams['n_head'],
-            hparams['n_embd'],
-            hparams['attn_pdrop'],
-            hparams['local_window']
+            n_head=hparams['n_head'],
+            dims=hparams['n_embd'],
+            dropout=hparams['attn_pdrop'],
+            local_window=hparams.get('local_window', 0),
+            stride=hparams.get('sparse_stride', 0),
+            pattern=hparams.get('attention_pattern', 'alternating')  # 'alternating' | 'dense' | 'sparse'
         )
 
         self.c_proj = nn.Linear(hparams['n_embd'], hparams['n_embd'])
