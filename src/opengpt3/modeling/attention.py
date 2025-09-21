@@ -4,17 +4,19 @@ import torch, math
 from torch import nn, Tensor
 from typing import Optional, Tuple
 from .split_merge import split_heads, merge_heads
-from .masking import causal_mask, local_mask
+from .masking import causal_mask, local_mask, strided_mask, combine_masks
 from .utils import softmax
 
 Past = Tuple[Tensor, Tensor]
 
 class MultiHeadAttn(nn.Module):
-    def __init__(self, n_head: int, local_window: int, attn_pdrop: float):
-        super().__init__()
-        self.n_head = n_head
-        self.local_window = local_window
-        self.attn_pdrop = attn_pdrop
+    def __init__(self, n_head: int, local_window: int, attn_pdrop: float, stride: int = 0, pattern: str = "dense"):
+         super().__init__()
+         self.n_head = n_head
+         self.local_window = local_window
+         self.stride = stride
+         self.pattern = pattern  # "dense" or "sparse"
+         self.dropout = nn.Dropout(attn_pdrop)
 
     def forward(self,
                 q: Tensor, k: Tensor, v: Tensor,
