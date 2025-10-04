@@ -11,12 +11,13 @@ Past = Tuple[Tensor, Tensor]
 
 class MultiHeadAttn(nn.Module):
     def __init__(self, n_head: int, local_window: int, attn_pdrop: float, stride: int = 0, pattern: str = "dense"):
-         super().__init__()
-         self.n_head = n_head
-         self.local_window = local_window
-         self.stride = stride
-         self.pattern = pattern  # "dense" or "sparse"
-         self.dropout = nn.Dropout(attn_pdrop)
+        super().__init__()
+        self.n_head = n_head
+        self.local_window = local_window
+        self.stride = stride
+        self.pattern = pattern  # "dense" or "sparse"
+        self.attn_pdrop = attn_pdrop
+        self.dropout = nn.Dropout(attn_pdrop)
 
     def forward(self,
                 q: Tensor, k: Tensor, v: Tensor,
@@ -44,10 +45,20 @@ class MultiHeadAttn(nn.Module):
         return context, present
 
 class AttentionLayer(nn.Module):
-    def __init__(self, n_head: int, dims: int, dropout: float, local_window: int, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, n_head: int, dims: int, dropout: float, local_window: int,
+                 stride: int = 0, pattern: str = "dense"):
+        super().__init__()
         # use Q/K/V computed in TransformerBlock via c_attn
-        self.attn = MultiHeadAttn(n_head, local_window, attn_pdrop=dropout)
+        self.attn = MultiHeadAttn(
+            n_head,
+            local_window,
+            attn_pdrop=dropout,
+            stride=stride,
+            pattern=pattern,
+        )
+        self.pattern = pattern
+        self.local_window = local_window
+        self.stride = stride
 
     def forward(
         self,
