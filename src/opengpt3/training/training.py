@@ -5,8 +5,11 @@ import torch.optim as optim
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.utils.data import DataLoader
-from opengpt3.training import TrainingSpec, TrainConfig, Recorder
 from typing import Dict, Optional
+
+from opengpt3.training.pipeline import TrainingPipeline
+from opengpt3.training.configuration import TrainConfig
+from opengpt3.training.recording import Recorder
 
 try:
     from apex import amp
@@ -20,8 +23,8 @@ import json
 
 
 class Trainer(object):
-    def __init__(self, spec: TrainingSpec, config: TrainConfig):
-        self.spec = spec
+    def __init__(self, pipeline: TrainingPipeline, config: TrainConfig):
+        self.pipeline = pipeline
         self.config = config
 
     def train(self,
@@ -45,26 +48,24 @@ class Trainer(object):
                                     rank=rank)
 
         # training env and prepare datasets.
-        self.spec.initialize()
-        train_dataset, eval_dataset = self.spec.prepare_datasets()
+        self.pipeline.initialize()
+        train_dataset, eval_dataset = self.pipeline.build_datasets()
 
         # TODO: support distributed sampler for datasets.
         self.train_loader = DataLoader(
             train_dataset,
             batch_size=self.config.batch_train,
-            collate_fn=self._collate_fn,
         )
         self.eval_loader = DataLoader(
             eval_dataset,
             batch_size=self.config.batch_eval,
-            collate_fn=self._collate_fn,
         )
         self.train_iter = iter(self.train_loader)
         self.eval_iter = iter(self.eval_loader)
 
 
 
-        model = self.spec.construct_model().to(self.config.device)
+        model = self.pipeline.build_model().to(self.config.device)
         if from_pretrained:
             ckpt = torch.load(from_pretrained, map_location=self.config.device)
             model.load_state_dict(ckpt['model'])
@@ -73,7 +74,7 @@ class Trainer(object):
             del ckpt
             torch.cuda.empty_cache()
 
-        optimizer, scheduler = self.spec.create_optimizer(model.parameters())
+        optimizer, scheduler = self.pipeline.create_optimizer(model.parameters())
         recorder = Recorder()
 
         if self.config.use_amp:
@@ -120,8 +121,6 @@ class Trainer(object):
             training_iters = range(start_step + 1, self.config.total_steps)
 
         for step in training_iters:
-            torch.cuda.empty_cache() # not sure if this is needed, but let it be here
-
             recorder.record(
                 self._train_step(rank, model, optimizer, scheduler),
                 scope='train')
@@ -131,11 +130,6 @@ class Trainer(object):
                 if rank == 0:
                     training_iters.set_postfix_str(
                         recorder.format(self.config.log_format))
-
-
-            torch.cuda.empty_cache()
-
-
             if (step + 1) % self.config.eval_steps == 0:
                 recorder.record(
                     self._eval_step(rank, model), scope='eval')
@@ -177,7 +171,7 @@ class Trainer(object):
                 os.makedirs(out_dir, exist_ok=True)
                 # safetensors here
                 model.cpu().save_pretrained(out_dir)
-                self.spec.tokenizer.save_pretrained(out_dir)
+                self.pipeline.on_save(out_dir)
                 # save metrics
                 with open(os.path.join(out_dir, 'metrics.json'), 'w') as f:
                     json.dump(recorder.metrics, f)
@@ -202,8 +196,8 @@ class Trainer(object):
         except StopIteration:
             self.train_iter = iter(self.train_loader)
             batch = next(self.train_iter)
-        batch = {k: v.to(self.config.device) for k, v in batch.items()}
-        metrics = self.spec.train_objective(batch, model)
+        batch = self._prepare_batch(batch)
+        metrics = self.pipeline.train_objective(batch, model)
         loss = metrics['loss']
 
         if self.config.use_amp:
@@ -230,8 +224,8 @@ class Trainer(object):
         except StopIteration:
             self.eval_iter = iter(self.eval_loader)
             batch = next(self.eval_iter)
-        batch = {k: v.to(self.config.device) for k, v in batch.items()}
-        metrics = self.spec.eval_objective(batch, model)
+        batch = self._prepare_batch(batch)
+        metrics = self.pipeline.eval_objective(batch, model)
         return {k: self._to_value(v) for k, v in metrics.items()}
 
 
@@ -243,9 +237,24 @@ class Trainer(object):
         else:
             return tensor.item()
 
-    def _collate_fn(self, batch):
-        # collate 'input' and 'output' fields into batched tensors
-        return {
-            field: torch.tensor([ex[field] for ex in batch], dtype=torch.long)
-            for field in ('input', 'output')
-        }
+    def _prepare_batch(self, batch):
+        if isinstance(batch, dict):
+            return {k: v.to(self.config.device) for k, v in batch.items()}
+
+        if isinstance(batch, list):
+            if not batch:
+                return {}
+            collated = {}
+            for sample in batch:
+                for key, value in sample.items():
+                    collated.setdefault(key, []).append(value)
+            return {
+                key: torch.stack(values).to(self.config.device)
+                if torch.is_tensor(values[0])
+                else torch.tensor(values, device=self.config.device)
+                for key, values in collated.items()
+            }
+
+        raise TypeError(f"Unsupported batch type {type(batch)!r}")
+
+    

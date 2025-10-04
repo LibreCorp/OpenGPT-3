@@ -22,7 +22,7 @@ def test_data_pipeline_basic(tmp_path):
     fpath = tmp_path / "data.txt"
     fpath.write_text(text, encoding='utf-8')
 
-    from opengpt3.train_model import opengpt3TrainingSpec
+    from opengpt3.train_model import build_training_pipeline
 
     class Args:
         dataset = str(fpath)
@@ -40,24 +40,24 @@ def test_data_pipeline_basic(tmp_path):
         train_split = 'train'
         eval_split = 'train'
 
-    spec = opengpt3TrainingSpec(
+    pipeline = build_training_pipeline(
         Args.dataset, Args.tokenizer_path,
         Args.seq_len, Args.layers, Args.heads,
         Args.dims, Args.rate, Args.dropout,
         Args.base_lr, Args.wd_rate, Args.total_steps,
         Args.use_grad_ckpt, Args.train_split, Args.eval_split
     )
-    spec.initialize()
-    train_ds, _ = spec.prepare_datasets()
+    pipeline.initialize()
+    train_ds, _ = pipeline.build_datasets()
 
     loader = DataLoader(
-        train_ds,
-        batch_size=2,
-        collate_fn=lambda batch: {
-            'input': torch.tensor([ex['input'] for ex in batch], dtype=torch.long),
-            'output': torch.tensor([ex['output'] for ex in batch], dtype=torch.long),
-        }
-    )
+            train_ds,
+            batch_size=2,
+            collate_fn=lambda batch: {
+                'input': torch.stack([ex['input'] for ex in batch]),
+                'output': torch.stack([ex['output'] for ex in batch]),
+            }
+        )
     batch = next(iter(loader))
     # shapes
     assert 'input' in batch and 'output' in batch

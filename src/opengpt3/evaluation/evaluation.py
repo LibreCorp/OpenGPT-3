@@ -1,22 +1,30 @@
 import torch
 import torch.nn as nn
-from opengpt3.data import Dataset
-from opengpt3.evaluation import EvaluationSpec, EvaluateConfig
+from torch.utils.data import DataLoader
 from typing import Optional, Dict
+
+from opengpt3.evaluation.pipeline import EvaluationPipeline
+from opengpt3.evaluation.configuration import EvaluateConfig
 
 
 class Evaluator(object):
-    def __init__(self, spec: EvaluationSpec, config: EvaluateConfig):
-        self.spec = spec
+    def __init__(self, pipeline: EvaluationPipeline, config: EvaluateConfig):
+        self.pipeline = pipeline
         self.config = config
+
+    
 
     def evaluate(self, from_model: Optional[str] = None) -> Dict[str, float]:
         # Initialize evaluation environment and prepare a dataset.
-        self.spec.initialize()
-        eval_dataset = self.spec.prepare_dataset()
+        self.pipeline.initialize()
+        eval_dataset = self.pipeline.build_dataset()
+        eval_loader = DataLoader(
+            eval_dataset,
+            batch_size=self.config.batch_eval,
+        )
 
         # Load trained model parameters.
-        model = self.spec.construct_model(from_model).eval()
+        model = self.pipeline.build_model(from_model).eval()
 
         # Move the model to GPU device and convert the data type to half
         # precision.
@@ -25,7 +33,7 @@ class Evaluator(object):
 
         total_metrics = {}
         for _ in self.config.iterate():
-            for batch_idx, data in enumerate(eval_dataset):
+            for batch_idx, data in enumerate(eval_loader):
                 if self.config.total_steps != -1 and batch_idx >= self.config.total_steps:
                     break
                 batch_metrics = self._eval_step(data, model)
@@ -46,7 +54,7 @@ class Evaluator(object):
             if self.config.use_gpu:
                 data = {k: v.cuda() for k, v in data.items()}
 
-            metrics = self.spec.eval_objective(data, model)
+            metrics = self.pipeline.eval_objective(data, model)
             return {k: v.item() for k, v in metrics.items()}
         except StopIteration:
             return None

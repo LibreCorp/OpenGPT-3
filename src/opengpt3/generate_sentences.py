@@ -4,20 +4,24 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer
 from opengpt3.modeling.transformer import GPTModel
 
+from opengpt3.config import resolve_generation_settings
+
 def gen(args: argparse.Namespace):
-    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_path)
-    model = GPTModel.from_pretrained(args.model_path)
+    settings = resolve_generation_settings(args)
+
+    tokenizer = AutoTokenizer.from_pretrained(settings.tokenizer_path)
+    model = GPTModel.from_pretrained(settings.model_path)
     model.eval()
 
-    if args.use_gpu:
+    if settings.use_gpu:
         model.to("cuda")
 
     device = next(model.parameters()).device
-    input_ids = tokenizer.encode(args.prompt, return_tensors="pt").to(device)
+    input_ids = tokenizer.encode(settings.prompt, return_tensors="pt").to(device)
     prompt_length = input_ids.shape[1]
     n_ctx = model.hparams['n_ctx']
 
-    max_length = args.seq_len
+    max_length = settings.seq_len
     if max_length > n_ctx:
         print(f"Warning: seq_len ({max_length}) exceeds model's context window ({n_ctx}). Capping at {n_ctx}.")
         max_length = n_ctx
@@ -46,15 +50,15 @@ def gen(args: argparse.Namespace):
         next_token_logits = logits[-1, :]
 
         # temperature
-        if args.temperature > 0:
-            next_token_logits = next_token_logits / args.temperature
+        if settings.temperature > 0:
+            next_token_logits = next_token_logits / settings.temperature
 
         # top-p
-        if args.nucleus_prob < 1.0:
+        if settings.nucleus_prob < 1.0:
             sorted_logits, sorted_indices = torch.sort(next_token_logits, descending=True)
             cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-            
-            sorted_indices_to_remove = cumulative_probs > args.nucleus_prob
+
+            sorted_indices_to_remove = cumulative_probs > settings.nucleus_prob
             sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
             sorted_indices_to_remove[..., 0] = 0
 
@@ -80,22 +84,26 @@ def add_subparser(subparsers: argparse._SubParsersAction):
         "generate", help="generate text with a pretrained transformer"
     )
     parser.add_argument(
-        "--tokenizer_path", required=True,
+        "--config", "-c", default=None,
+        help="path to YAML configuration file"
+    )
+    parser.add_argument(
+        "--tokenizer_path", default=None,
         help="HuggingFace tokenizer name or path"
     )
     parser.add_argument(
-        "--model_path", required=True,
+        "--model_path", default=None,
         help="Path to the custom model checkpoint"
     )
     group = parser.add_argument_group("Generation options")
-    group.add_argument("--prompt", required=True,
+    group.add_argument("--prompt", default=None,
                        help="text prompt to generate from")
-    group.add_argument("--seq_len", type=int, default=64,
+    group.add_argument("--seq_len", type=int, default=None,
                        help="maximum generation length")
-    group.add_argument("--nucleus_prob", type=float, default=0.85,
+    group.add_argument("--nucleus_prob", type=float, default=None,
                        help="top-p nucleus sampling probability")
-    group.add_argument("--temperature", type=float, default=1.0,
+    group.add_argument("--temperature", type=float, default=None,
                        help="softmax temperature for sampling")
-    parser.add_argument("--use_gpu", action="store_true",
+    parser.add_argument("--use_gpu", action="store_true", default=None,
                         help="move model and tokens to GPU")
     parser.set_defaults(func=gen)
